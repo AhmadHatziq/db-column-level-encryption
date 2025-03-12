@@ -22,6 +22,15 @@ CMK - Column Master Key
 
 CEK - Column Encryption Key
 
+The certificate used can be chosen to be from the local store (local to your machine, not local to SQL Server). 
+
+You can access the windows local cert store with: 
+`WINDOWS_Key + R` => `certmgr.msc` => Personal => Certificates
+
+All decryption and encryption operations (including certs) happen at the client side. Nothing is stored at the DB, except for references to the CMK, CEK etc. 
+
+![How AE Works](../img/always-encrypted-how-queries-against-encrypted-columns-work.png)
+
 ## 5. In the new DB, create the CMK. 
 To create the CMK, we need to select the required cert. 
 The Certificates can be viewed when creating the CMK. 
@@ -30,20 +39,19 @@ The Certificates can be viewed when creating the CMK.
 
 ![Create CMK & View Certs](../img/sql_server_generate_cmk_view_certs.png)
 
-<ins>Why we cannot import our own certificates into RDS SQL Server</ins>
+If we generate a new certificate (on `Windows Certificate Store – Current User`), this certificate is created locally, not on the DB. 
 
-Note that in AWS RDS, as this is a managed SQL instance, we are unable to import our own certs. 
-We can only generate certs in RDS via SSMS. 
+When you create a Column Master Key (CMK) using a certificate from the `Windows Certificate Store – Current User`, the actual certificate is not stored on the SQL Server. Instead, only a reference to that certificate (and the associated metadata) is stored in the database. The certificate remains securely in the Windows Certificate Store on your client machine. This design helps ensure that the private key used for encryption remains under your control and is not directly exposed on the server side.
 
-Below is the error message when we try to import our own cert. Error message shows that we do not have enough permissions. 
+To view the certs stored locally, use `WINDOWS_Key + R` => `certmgr.msc` => Personal => Certificates
 
-![Create Cert Insufficent Privileges](../img/sql_server_rds_error_create_cert.png)
-
-Perhaps using [RDS Custom](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-custom.html) will allow us to have the required permissions. 
-
-Note down the cert used to create the CMK. 
+![Windows Cert Store](../img/windows_cert_store.png)
 
 ## 6. Export the cert used to create the CMK. 
+
+The cert used is created locally (not on SQL Server). We would need to export the cert for other users to access the key and for safekeeping. It is recommended to store the cert in a safe location for sharing, such as Secrets Manager. 
+
+We can access it as follows: 
 
 ![Create CMK & View Certs](../img/sql_server_export_cert.png)
 
@@ -53,11 +61,26 @@ In the CMK creation screen, double click the certificate used.
 
 ![Export Cert 3](../img/sql_server_export_cert_3.png)
 
-Navigate to `Details` => `Copy to File`. Save the file locally. Input a passphrase if required. 
+Navigate to `Details` => `Copy to File`. Save the file somewhere. Input a passphrase if required. 
+
+An alternate way to export the key is via the Windows Cert Store. 
+Use `WINDOWS_Key + R` => `certmgr.msc` => Personal => Certificates
+
+![Windows Cert Store](../img/windows_cert_store.png)
 
 To allow other users to have access to the CMK and CEK (and subsequently the Always Encrypted sensitive column), they will need to install this cert and reference this when connecting to SQL Server. 
 
-Keep the cert somewhere safe. 
+Note that in this example, we are using `Windows Certificate Store - Current User`. This is the personal store of the connected admin user. 
+
+The cert is never stored on the Database. 
+
+![MS Docs 1](../img/sql_server_ms_docs_1.png)
+
+The above screenshot from Microsoft docs indicates that the `Certificate Store - Current User` is local to the client machine, not on the DB. 
+
+Reference: 
+
+- Microsoft guide on provisioning CMK and CEK - https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/configure-always-encrypted-keys-using-ssms?view=sql-server-ver16
 
 ## 7. Create the CEK. 
 
@@ -158,7 +181,7 @@ In this example, we will be using Python and ODBC drivers to access the encrypte
 Windows machine is assumed to be used. 
 
 Access the windows cert store with: 
-`CTRL+R`, `certmgr.msc`
+`WINDOWS_Key + R`, `certmgr.msc`
 
 ![Access Windows Cert Store](../img/windows_cert_store_command.png)
 
@@ -255,17 +278,14 @@ This example shows that to delegate access of the encrypted column to other user
 
 ## 12. Can another DB admin access the certs/keys created by the first DB admin? 
 
-Since we are using AWS RDS, the certificates created are stored in the Windows Certificate Store. 
-Any DB Admin with access to the RDS instance and the underlying Windows Certificate Store will be able to access the certs/keys. 
+No. All encryption/decryption operations happens client side. 
 
-![Other Cert Options](../img/sql_server_cert_options.png)
+When a DBA first creates a CMK, the cert is generated on his/her client machine. 
 
-There are other certificate storage options such as Azure Key Vault. However, there is no integration with AWS KMS. 
+For other users to access the encrypted data, the DBA will need to share this cert with them. 
 
-A possible approach would be to export the certificates out and store them on AWS Secrets Manager. 
+For more details, please refer to Microsoft docs: https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/always-encrypted-how-queries-against-encrypted-columns-work?view=sql-server-ver16
 
-If we want to further restrict access by admins, we can explore RDS Custom. 
-This should provide us with enough permissions to import our own certs into SQL Server (and not use the SQL Server's Local Windows Certificate Store)
 
 ## 13. Certificate Rotation 
 
