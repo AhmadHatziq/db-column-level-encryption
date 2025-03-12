@@ -1,0 +1,77 @@
+alter system set WALLET_ROOT = '/opt/oracle/keystore' SCOPE=SPFILE;
+
+shutdown immediate; 
+startup; 
+SHOW PARAMETER WALLET_ROOT;
+SHOW PARAMETER TABLESPACE_ENCRYPTION;
+
+a.	alter system set TDE_CONFIGURATION = "KEYSTORE_CONFIGURATION=FILE" scope = both;
+b.	shutdown immediate; 
+c.	startup; 
+d.	administer key management CREATE KEYSTORE identified by password;
+e.	administer key management CREATE LOCAL AUTO_LOGIN KEYSTORE from keystore identified by password;
+f.	administer key management SET KEY force keystore identified by password with backup container = current;
+
+5.	Create new user and schema 
+a.	CREATE USER user1 IDENTIFIED BY password;
+b.	GRANT CONNECT, RESOURCE TO user1;
+c.	ALTER USER user1 QUOTA UNLIMITED ON users;
+d.	CONNECT user1/password
+
+
+CREATE TABLE employee_table (first_name VARCHAR2(128),salary NUMBER(6) ENCRYPT);
+DESCRIBE employee_table;
+
+
+I am implementing TDE Column encryption in Oracle DB. Below are the steps that I have used to create the wallet and the table. 
+
+Give me a command to insert records into the employee table. 
+1.	Start a docker instance of Oracle DB and run a shell in it. 
+a.	docker run -d -p 1521:1521 -e ORACLE_PASSWORD=password gvenzl/oracle-xe
+b.	docker exec -it <container-id> sh
+2.	Create the keystore wallet location (to store the keys) 
+a.	In this example, we use the local filesystem (/opt.oracle.keystores) as the keystore location 
+b.	mkdir /opt/oracle/keystores
+c.	chown -Rv oracle:oinstall /opt/oracle/keystores
+d.	chmod -Rv 700 /opt/oracle/keystores
+3.	Run sqlplus as DBA and initialize the 2 variables: WALLET_ROOT and TABLESPACE_ENCRYPTION
+a.	sqlplus / as sysdba
+b.	alter system set WALLET_ROOT = '/opt/oracle/keystores' SCOPE=SPFILE;
+c.	shutdown immediate; 
+d.	startup; 
+e.	SHOW PARAMETER WALLET_ROOT;
+f.	SHOW PARAMETER TABLESPACE_ENCRYPTION;
+4.	Set up TDE Wallet settings 
+a.	alter system set TDE_CONFIGURATION = "KEYSTORE_CONFIGURATION=FILE" scope = both;
+b.	shutdown immediate; 
+c.	startup; 
+d.	administer key management CREATE KEYSTORE identified by password;
+e.	administer key management CREATE LOCAL AUTO_LOGIN KEYSTORE from keystore identified by password;
+f.	administer key management SAET KEY force keystore identified by password with backup container = current;
+5.	Create new user and schema 
+a.	CREATE USER user1 IDENTIFIED BY password;
+b.	GRANT CONNECT, RESOURCE, CREATE SESSION TO user1;
+c.	ALTER USER user1 QUOTA UNLIMITED ON users;
+d.	CONNECT user1/password;
+	CONNECT test_user_1/password; 
+e.	SHOW USER;
+
+# Docker command to allow login for a user: 
+alter session set container=XEPDB1;
+GRANT CREATE SESSION TO test_user_1;
+
+
+6.	Create a new table (with encryption for credit_card column)
+a.	CREATE TABLE customer_table (customer_id NUMBER(10) PRIMARY KEY,customer_name VARCHAR2(128),credit_card_number NUMBER(38) ENCRYPT);
+CREATE TABLE customer_table (customer_id NUMBER(10) PRIMARY KEY,customer_name VARCHAR2(128),credit_card_number VARCHAR2(64) ENCRYPT);
+
+b.	DESCRIBE customer_table;
+
+INSERT INTO customer_table (customer_id, customer_name, credit_card_number) VALUES (123, 'Jim Halpert', '4111111111111111');
+INSERT INTO customer_table (customer_id, customer_name, credit_card_number) VALUES (456, 'Kevin Malone', '3566002020360505');
+INSERT INTO customer_table (customer_id, customer_name, credit_card_number) VALUES (789, 'Pamela Beasly', '371449635398431');
+COMMIT;
+SELECT * FROM employee_table; 
+
+GRANT CREATE SESSION TO test_user_1 WITH ADMIN OPTION; 
+GRANT CREATE SESSION TO TEST_USER_1 WITH ADMIN OPTION; 
