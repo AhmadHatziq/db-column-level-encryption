@@ -251,10 +251,43 @@ The credit card information is shown (the last column).
 
 ![Python Success](../img/sql_server_python_success.png)
 
-## 12. Certificate Rotation 
+This example shows that to delegate access of the encrypted column to other users, installation of the Certificate (used to create the CMK) is needed. 
+
+## 12. Can another DB admin access the certs/keys created by the first DB admin? 
+
+Since we are using AWS RDS, the certificates created are stored in the Windows Certificate Store. 
+Any DB Admin with access to the RDS instance and the underlying Windows Certificate Store will be able to access the certs/keys. 
+
+![Other Cert Options](../img/sql_server_cert_options.png)
+
+There are other certificate storage options such as Azure Key Vault. However, there is no integration with AWS KMS. 
+
+A possible approach would be to export the certificates out and store them on AWS Secrets Manager. 
+
+If we want to further restrict access by admins, we can explore RDS Custom. 
+This should provide us with enough permissions to import our own certs into SQL Server (and not use the SQL Server's Local Windows Certificate Store)
+
+## 13. Certificate Rotation 
 
 Relevant documentation: 
 - Always Encrypted Key Rotation with SSMS - https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/rotate-always-encrypted-keys-using-ssms?view=sql-server-ver16
 - Overview of Keys in Always Encrypted - https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/overview-of-key-management-for-always-encrypted?view=sql-server-ver16
 
+To rotate a CMK, we need to create another CMK first (preferably using another certificate). 
+
+In this example, we have another CMK called `test cmk 1`. We will rotate the old CMK `Master Key from Auto Cert 1` with the new CMK `test cmk 1`. 
+
+![Rotate CMK 1](../img/sql_server_rotate_key_1.png)
+
+![Rotate CMK 2](../img/sql_server_rotate_key_2.png)
+
+Once rotation is done, please update all clients to use the latest certificate. 
+
+After this is done, we can perform cleanup of the old CMK. 
+
+![Cleanup CMK 1](../img/sql_server_cleanup_key_1.png)
+
+![Cleanup CMK 2](../img/sql_server_cleanup_key_2.png)
+
+For a more thorough guide on rotating the certs and keys, please visit Microsoft's official documentation above. 
 
