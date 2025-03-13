@@ -2,25 +2,34 @@
 
 SQL Server Always Encrypted documentation - https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/always-encrypted-database-engine?view=sql-server-ver16
 
-## 1. Create SQL Server instance on RDS. Alter Security Group rules to allow connection via MS SQL. 
+## 1. Purpose 
+The purpose of this guide is to demonstrate how to enable Field Level Encryption in SQL Server on AWS RDS.
 
-Use https://whatismyipaddress.com/ to find out own IP address and add into security group. 
+Field Level encryption is enabled via SQL Server's Always Encrypt (AE) feature.
 
-![RDS Security Group Rules](../img/rds_security_group_rules.png)
+This guide will demonstrate the process to setup a table with column-level encryption (via the AE feature) and illustrate the process of how this protects the columns from unauthorized users.
 
-## 2. Connect to SQL instance using SSMS. (with DB admin account)
+For the latest updates, please refer to Microsoft's official documentation on the AE feature:
+- Tutorial on Starting with Always Encrypt - https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/always-encrypted-tutorial-getting-started?view=sql-server-ver16&tabs=ssms
+- Introduction to SQL Server Always Encrypt - https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/always-encrypted-database-engine
+- Developer guide on SQL Server Always Encrypt - https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/always-encrypted-client-development
+- AWS guide on using SQL Server Always Encrypt on RDS - https://aws.amazon.com/blogs/database/set-up-always-encrypted-with-amazon-rds-for-sql-server/
 
-## 3. Create a new test DB. Eg `test-db-1`
-
-## 4. Understand the flow required for creating the Always Encrypted Keys. 
-
-![Always Encryp Flow](../img/sql_server_always_enc_flow.png)
+## 2. Background
+![Always Encrypt Flow](../img/sql_server_always_enc_flow.png)
 
 Terminology: 
 
-CMK - Column Master Key
+- CMK - Column Master Key
+- CEK - Column Encryption Key
 
-CEK - Column Encryption Key
+Always Encrypted is a client-side encryption technology that ensures sensitive data (and related encryption keys) are never revealed to the SQL Server Database. The certificates, CMK and CEK are not stored on the SQL Server. Only references are stored.
+
+With Always Encrypted, a client driver transparently encrypts sensitive data before passing the data to the Database Engine, and it transparently decrypts data retrieved from encrypted database columns.
+
+To create the CMK, a certificate is required. The certificate can be chosen from the Windows Local User Certificate Store.
+
+To share access to the encrypted columns, sharing of the certificate to authorized users is required.
 
 The certificate used can be chosen to be from the local store (local to your machine, not local to SQL Server). 
 
@@ -31,7 +40,23 @@ All decryption and encryption operations (including certs) happen at the client 
 
 ![How AE Works](../img/always-encrypted-how-queries-against-encrypted-columns-work.png)
 
-## 5. In the new DB, create the CMK. 
+## 3. Pre-requisites 
+- RDS Instance running SQL Server
+- SQL Server Management Studio (SSMS) to connect to the RDS SQL Server instance
+- DB admin permissions
+- Access to Windows Local User Certificate Store
+
+## 4. Create SQL Server instance on RDS. Alter Security Group rules to allow connection via MS SQL. 
+
+Use https://whatismyipaddress.com/ to find out own IP address and add into security group. 
+
+![RDS Security Group Rules](../img/rds_security_group_rules.png)
+
+## 5. Connect to SQL instance using SSMS. (with DB admin account)
+
+## 6. Create a new test DB. Eg `test-db-1`
+
+## 7. Creating Certificate (Optional) and CMK
 To create the CMK, we need to select the required cert. 
 The Certificates can be viewed when creating the CMK. 
 
@@ -47,7 +72,7 @@ To view the certs stored locally, use `WINDOWS_Key + R` => `certmgr.msc` => Pers
 
 ![Windows Cert Store](../img/windows_cert_store.png)
 
-## 6. Export the cert used to create the CMK. 
+## 8. Export the cert used to create the CMK. 
 
 The cert used is created locally (not on SQL Server). We would need to export the cert for other users to access the key and for safekeeping. It is recommended to store the cert in a safe location for sharing, such as Secrets Manager. 
 
@@ -82,13 +107,13 @@ Reference:
 
 - Microsoft guide on provisioning CMK and CEK - https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/configure-always-encrypted-keys-using-ssms?view=sql-server-ver16
 
-## 7. Create the CEK. 
+## 9. Create the CEK. 
 
 Similar to the CMK, use the GUI to create a CEK. The CEK requires access to the previously created CMK. 
 
 ![Create CEK](../img/sql_server_generate_cek_1.png)
 
-## 8. Create the encrypted table. 
+## 10. Create the encrypted table. 
 
 For this demo, we will create a table of customer data. The credit card information will be encrypted using Always Encrypted. 
 
@@ -108,7 +133,7 @@ CREATE TABLE CustomerInfo (
 
 ![Create Table](../img/sql_server_create_table.png)
 
-## 9. Enable Always Encrypt settings in SSMS 
+## 11. Enable Always Encrypt settings in SSMS 
 
 Before we can interact with the Always Encrypt (AE) column, we need to configure SSMS first. 
 
@@ -120,7 +145,7 @@ Reconnect back to SQL Server instance and enable AE
 
 ![Configure SQL Server Connection](../img/sql_server_ae_settings_2.png)
 
-## 10. Insert data into the table 
+## 12. Insert data into the table 
 
 Note that due to how encryption is done at the client-side in Always Encrypted, normal INSERT statements will have to be parameterized. 
 
@@ -148,8 +173,8 @@ VALUES (@id, @name, @card)
 If we query the column, we will be able to see the encrypted data easily. 
 This is as our current account has access to the certificates used to create the CMK and CEK. 
 
-## 11. Create a new role and verify that data is encrypted 
-### 11.1 Create a new role 
+## 13. Create a new role and verify that data is encrypted 
+### 13.1 Create a new role 
 
 Use the following commands to create a new DB role (username `user-1` with password `user-1`): 
 ```
@@ -176,7 +201,7 @@ GRANT SELECT ON [dbo].[CustomerInfo] TO [user-1];
 
 In this example, we will be using Python and ODBC drivers to access the encrypted column. 
 
-### 11.2 Remove the certificate from the Windows Cert Store 
+### 13.2 Remove the certificate from the Windows Cert Store 
 
 Windows machine is assumed to be used. 
 
@@ -190,7 +215,7 @@ Delete all certs relating to Always Encrypted:
 
 ![Delete AE Certs](../img/windows_delete_certs.png)
 
-### 11.3 Run Python, configure to connect as the new user without certs installed
+### 13.3 Run Python, configure to connect as the new user without certs installed
 
 Python ODBC uses a connection string to authenticate and access the AE columns. 
 In this demo, the connection string will use any certs installed in the Local Windows Cert Store. 
@@ -254,7 +279,7 @@ However, if we only SELECT the non-encrypted column (`SELECT CustomerName  FROM 
 
 ![Python Access Unencrypted Column](../img/sql_server_python_access_non_ae_cols.png)
 
-### 11.4 Install the certs and execute again 
+### 13.4 Install the certs and execute again 
 
 Using the previously exported cert, import it into the system. 
 As we are using Windows, just double click the cert, which will trigger the Certificate Import Wizard. 
@@ -276,7 +301,7 @@ The credit card information is shown (the last column).
 
 This example shows that to delegate access of the encrypted column to other users, installation of the Certificate (used to create the CMK) is needed. 
 
-## 12. Can another DB admin access the certs/keys created by the first DB admin? 
+## 14. Can another DB admin access the certs/keys created by the first DB admin? 
 
 No. All encryption/decryption operations happens client side. 
 
@@ -287,7 +312,7 @@ For other users to access the encrypted data, the DBA will need to share this ce
 For more details, please refer to Microsoft docs: https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/always-encrypted-how-queries-against-encrypted-columns-work?view=sql-server-ver16
 
 
-## 13. Certificate Rotation 
+## 15. Certificate Rotation 
 
 Relevant documentation: 
 - Always Encrypted Key Rotation with SSMS - https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/rotate-always-encrypted-keys-using-ssms?view=sql-server-ver16
