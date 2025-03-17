@@ -46,6 +46,10 @@ All decryption and encryption operations (including certs) happen at the client 
 - DB admin permissions
 - Access to Windows Local User Certificate Store
 
+Below is the RDS SQL Server settings that this demo was created on: 
+
+![RDS SQL Server Settings](../img/rds_sql_server_config.png)
+
 ## 4. Create SQL Server instance on RDS. Alter Security Group rules to allow connection via MS SQL. 
 
 Use https://whatismyipaddress.com/ to find out own IP address and add into security group. 
