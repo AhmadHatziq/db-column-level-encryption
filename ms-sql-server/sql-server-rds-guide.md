@@ -22,23 +22,53 @@ Terminology:
 
 - CMK - Column Master Key
 - CEK - Column Encryption Key
+- `pfx` certification - X.509 cert containing public, private keys and CRL 
 
 Always Encrypted is a client-side encryption technology that ensures sensitive data (and related encryption keys) are never revealed to the SQL Server Database. The certificates, CMK and CEK are not stored on the SQL Server. Only references are stored.
 
 With Always Encrypted, a client driver transparently encrypts sensitive data before passing the data to the Database Engine, and it transparently decrypts data retrieved from encrypted database columns.
 
-To create the CMK, a certificate is required. The certificate can be chosen from the Windows Local User Certificate Store.
+The CMK involves the use of a `pfx` file. SSMS can generate the pfx certificate locally. 
 
-To share access to the encrypted columns, sharing of the certificate to authorized users is required.
+To share access to the encrypted columns, sharing of the pfx certificate to authorized users is required, as well as the passowrd used to protect the pfx file. 
 
 The certificate used can be chosen to be from the local store (local to your machine, not local to SQL Server). 
 
 You can access the windows local cert store with: 
 `WINDOWS_Key + R` => `certmgr.msc` => Personal => Certificates
 
-All decryption and encryption operations (including certs) happen at the client side. Nothing is stored at the DB, except for references to the CMK, CEK etc. 
+All decryption and encryption operations (including certs) happen at the client side. Nothing is stored at the DB, except for references to the CMK and the encrypted CEK etc. 
 
 ![How AE Works](../img/always-encrypted-how-queries-against-encrypted-columns-work.png)
+
+### Elaboration on cryptography used 
+A .pfx  certificate consists of components such as the private key, public key and CRLs. References below:
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/install/personal-information-exchange---pfx--files
+- https://www.advancedinstaller.com/what-is-pfx-certificate.html
+
+The private key in the pfx  certificate is used as the Column Master Key (CMK). 
+
+CMK is used to encrypt CEKs by using asymmetric RSA with Optimal Asymmetric Encryption Padding (RSA-OAEP)
+
+CEKs are used to encrypt the sensitive columns via symmetric encryption. 
+
+*Storage*
+
+CEKs are encrypted and stored on the database. Only the CMK can be used to access the encrypted CEKs. 
+
+CMKs are not stored on the database. They are only stored in the trusted key store, such as the pfx  cert in the Windows Certificate Store. 
+
+Only the CMK metadata is stored on the database. 
+Protecting the CMK
+
+As the CMK is stored in the pfx  file, we are required to specify a password to protect it, when exporting the CMK. 
+
+The pfx  cert file (along with the password) should be stored securely, such as on AWS Secrets Manager. 
+
+For a thorough understanding, please refer to the following Microsoft documentation: 
+
+Key Management in AE: https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/overview-of-key-management-for-always-encrypted
+Cryptography in AE: https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/always-encrypted-cryptography
 
 ## 3. Pre-requisites 
 - RDS Instance running SQL Server
@@ -76,7 +106,7 @@ To view the certs stored locally, use `WINDOWS_Key + R` => `certmgr.msc` => Pers
 
 ![Windows Cert Store](../img/windows_cert_store.png)
 
-## 8. Export the cert used to create the CMK. 
+## 8. Export the cert used for the CMK. 
 
 The cert used is created locally (not on SQL Server). We would need to export the cert for other users to access the key and for safekeeping. It is recommended to store the cert in a safe location for sharing, such as Secrets Manager. 
 
@@ -101,7 +131,7 @@ To allow other users to have access to the CMK and CEK (and subsequently the Alw
 
 Note that in this example, we are using `Windows Certificate Store - Current User`. This is the personal store of the connected admin user. 
 
-The cert is never stored on the Database. 
+The cert/CMK is never stored on the Database. 
 
 ![MS Docs 1](../img/sql_server_ms_docs_1.png)
 
@@ -110,6 +140,16 @@ The above screenshot from Microsoft docs indicates that the `Certificate Store -
 Reference: 
 
 - Microsoft guide on provisioning CMK and CEK - https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/configure-always-encrypted-keys-using-ssms?view=sql-server-ver16
+
+![Cert Export 1](../img/export_cert_1.png)
+
+![Cert Export 2](../img/export_cert_2.png)
+
+![Cert Export 3](../img/export_cert_3.png)
+
+![Cert Export 4](../img/export_cert_4.png)
+
+When exporting the cert, as it contains the private CMK, please specify a strong password. 
 
 ## 9. Create the CEK. 
 
@@ -292,9 +332,14 @@ As we are using Windows, just double click the cert, which will trigger the Cert
 
 ![Import Cert 2](../img/windows_import_cert_2.png)
 
+![Import Cert 3](../img/import_cert_1.png)
+- Specify the password used when exporting the cert file. 
+
 Once imported, we can verify in Windows Certificate Manager that the cert is present (refresh if needed)
 
 ![Import Cert 3](../img/windows_import_cert_3.png)
+
+This will ensure that the user has access to the CMK and can decrypt the CEK and subsequent AE columns. 
 
 Execute the Python code again. 
 
@@ -311,7 +356,7 @@ No. All encryption/decryption operations happens client side.
 
 When a DBA first creates a CMK, the cert is generated on his/her client machine. 
 
-For other users to access the encrypted data, the DBA will need to share this cert with them. 
+For other users to access the encrypted data, the DBA will need to share this cert with them, as long as the password used to protect the cert. 
 
 For more details, please refer to Microsoft docs: https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/always-encrypted-how-queries-against-encrypted-columns-work?view=sql-server-ver16
 
